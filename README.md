@@ -11,6 +11,10 @@ This is currently incomplete but the high points are:
 - I grabbed the ERC721 gameItem contract from Openzeppelin and am writing a rest API to award, trade and delete in game items.  This wasn't my original intent on a usecase, but it's where it is.
 - I went ahead and precompiled the contract using solc and abigen although I was able to compile it by modifying the kaleido example to add the node path.
 
+### Simple Deployment Diagram
+
+![Sooo pretty!!](images/kec_diagram.jpg)
+
 ## Setup
 
 1.  Get Docker and golang.  I'm using 1.17.4 of golang and whatever the latest docker is.
