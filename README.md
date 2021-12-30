@@ -16,11 +16,15 @@ This is currently incomplete but the high points are:
 1.  Get Docker and golang.  I'm using 1.17.4 of golang and whatever the latest docker is.
 2.  Setup and deploy quorum-tools to get an ethereum environment.  The code currently assumes a node at localhost:22001.  Also make sure to get the chainid.  It's not 2018.
 3.  Clone this repo
-4.  run `go build` to build the main package which includes main.go and GameItem.go.
-5.  run `nobuild.sh` to build a container with the go binary included (see below for details).
-6.  run `runit.sh` to deploy the container as apptwo.  (We don't talk about appone.  Too soon.)
-7.  run `runredis.sh` to deploy redis.  Note that this also puts Redis and apptwo on a kec network so I can refer to redis by name.
-8.  Use curl to 8081 to hit the rest API.
+1.  run `nobuild.sh` to build a container with the go binary included (see below for details).
+2.  run `docker-compose up` to stand up redis and the kec app `apptwo` and create the proper network.
+
+Alternatively you could do the following:
+
+1.  run `runit.sh` to deploy the container as apptwo.  (We don't talk about appone.  Too soon.)
+1.  run `runredis.sh` to deploy redis.  Note that this also puts Redis and apptwo on a kec network so I can refer to redis by name.
+
+That's it.  You can use curl to 8081 to verify the API is up.
 
 ### Details on the scripts
 
@@ -33,13 +37,21 @@ This is currently incomplete but the high points are:
 
 TODO: Swagger.
 
-- `POST /api/v1/user/id` Creates a user/transactor (represented by a private key) for Ethereum and stores the key in Redis.
-- `POST /api/v1/deployContract/id` Deploys the GameItem contract by a particular user specified by ID
-- `GET /api/v1/testFunction` Does some random Ethereum stuff.  I use this to test new things before I add to an actual method.
+- `GET /` Simple check to ensure the app is up and running.  
+ex: `curl http://localhost:8081`
+- `POST /api/v1/user/id` Creates a user/transactor (represented by a private key) for Ethereum and stores the key in Redis.  
+ex: `curl -X POST http://localhost:8081/api/v1/user/paul` will create a user paul.  
+- `POST /api/v1/deployContract/id` Deploys the GameItem contract by a particular user specified by ID  
+ex: `curl -X POST http://localhost:8081/api/v1/deployContract/paul` to deploy the GameItem contract as user paul.
+- `GET /api/v1/testFunction` Does some random Ethereum stuff.  I use this to test new things before I add to an actual method.  
+ex: `curl http://localhost:8081/testFunction`  I don't really remember what this returns but it does stuff.
+- `POST /api/v1/awardItem/user/itemname/instance` Awards item itemname to specified user via contract at address instance.  
+ex: `curl -X POST http://localhost:8081/api/v1/awardItem/paul/hammer/0x739d7B9E7552E972b1d1F73Acf938BcF34eCb9C1`
+- `GET /api/v1/getItems` Gets a list of available items to be awarded.  Right now there's only a hammer because THOR!  
+ex: `curl http://localhost:8081/api/v1/getItems`
 
 Planned APIs
 
-- `POST /api/v1/awardItem` Awards an item to a user.
 - `POST /api/v1/tradeItem/itemid` Trades an item from the owner to another user.
 - `POST /api/v1/destroyItem/itemid` Destroys a users item.  Should only be able to be done by that user.
 Also some Get APIs around viewing items, etc.
