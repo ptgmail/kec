@@ -1,4 +1,4 @@
-# Paul's Incomplete Kaleido Engineering Challenge Project
+# Incomplete Kaleido Project
 
 ##  Overview
 
