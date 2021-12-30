@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"time"
 
 	//"encoding/json"
 
@@ -14,6 +15,7 @@ import (
 
 	//	SimpleStorage "./contracts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -30,24 +32,25 @@ func main() {
 	app := fiber.New()
 
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("KEC App Running!")
+		return c.SendString("KEC App Running!\n")
 	})
 
 	app.Get("/api/v1/testFunction", func(c *fiber.Ctx) error {
 
 		testFunction()
-		return c.SendString("Called testFunction")
+		return c.SendString("Called testFunction\n")
 	})
 
 	app.Post("/api/v1/deployContract/:id", func(c *fiber.Ctx) error {
 
-		err := deployContract(c.Params("id"))
+		address, err := deployContract(c.Params("id"))
 
 		if err != nil {
-			msg := fmt.Sprintf("Contract did not deploy.  Error %s", err)
+			msg := fmt.Sprintf("Contract did not deploy.  Error %s\n", err)
 			return c.SendString(msg)
 		}
-		return c.SendString("Contract Deployed Successfully")
+		msg := fmt.Sprintf("Contract Deployed Successfully, Address is %s\n", address)
+		return c.SendString(msg)
 
 	})
 
@@ -57,10 +60,45 @@ func main() {
 
 		if err == nil {
 			fmt.Println(err)
-			msg := fmt.Sprintf("User %s Already Exists", c.Params("id"))
+			msg := fmt.Sprintf("User %s Already Exists\n", c.Params("id"))
 			return c.SendString(msg)
 		}
-		msg := fmt.Sprintf("Added User %s", c.Params("id"))
+		msg := fmt.Sprintf("Added User %s\n", c.Params("id"))
+		return c.SendString(msg)
+	})
+
+	app.Post("/api/v1/awardItem/:id/:item/:contracthex", func(c *fiber.Ctx) error {
+
+		if c.Params("item") != "hammer" {
+			msg := fmt.Sprintf("Item %s is not a valid item.  Run api/v1/getitems to see valid options\n", c.Params("item"))
+			return c.SendString(msg)
+		}
+
+		itemurl := "https://game.example/item-id-8u5h2m.json"
+		tx, err := awardItem(c.Params("id"), itemurl, c.Params("contracthex"))
+
+		if err != nil {
+			msg := fmt.Sprintf("Item was not awarded to user %s with url %s and hex address %s\n", c.Params("id"), c.Params("itemurl"), c.Params("contracthex"))
+			return c.SendString(msg)
+		}
+		msg := fmt.Sprintf("Awarded item %s to user %s.  Transaction is: %s", c.Params("item"), c.Params("id"), tx)
+		return c.SendString(msg)
+	})
+
+	app.Get("api/v1/getItems", func(c *fiber.Ctx) error {
+		return c.SendString("hammer\n")
+	})
+
+	app.Get("api/v1/getOwner/:itemid", func(c *fiber.Ctx) error {
+
+		owner, err := getOwner(c.Params("itemid"))
+
+		if err != nil {
+			msg := fmt.Sprintf("Item %s does not exist", c.Params("itemid"))
+			return c.SendString(msg)
+		}
+
+		msg := fmt.Sprintf("Getowner not implemented yet.  Owner is %s\n", owner)
 		return c.SendString(msg)
 	})
 
@@ -287,7 +325,7 @@ func getKey(keyname string) (*ecdsa.PrivateKey, error) {
 
 	byteKey, err := hex.DecodeString(keyString)
 
-	fmt.Println("Key we pulled is", byteKey)
+	fmt.Println("Key String we pulled is", keyString)
 
 	if err != nil {
 		log.Fatal("Failed to decode key", err)
@@ -457,7 +495,9 @@ func getRedisClient() (redis.Client, error) {
 	return *redisClient, err
 }
 
-func deployContract(deployer string) error {
+func deployContract(deployer string) (string, error) {
+
+	//Deploys an instance of the contract and returns the address so we can use it later to interact with the depoyed contract
 
 	client, _ := getEthClient()
 
@@ -465,7 +505,7 @@ func deployContract(deployer string) error {
 
 	if err != nil {
 		fmt.Println("Unable to get Private Key!!")
-		return err
+		return "", err
 	}
 
 	publicKey := privateKey.Public()
@@ -502,18 +542,18 @@ func deployContract(deployer string) error {
 	fmt.Println("Contract Transaction Hash is ", tx2.Hash().Hex())
 	fmt.Println("Contract Instance is ", instance)
 
-	itemId, err := instance.AwardItem(auth, address, "https://game.example/item-id-8u5h2m.json")
+	/*itemId, err := instance.AwardItem(auth, address, "https://game.example/item-id-8u5h2m.json")
 
 	if err != nil {
 		log.Fatal("Unable to Award Item", err)
 	}
 
 	fmt.Println("Item ID is ", itemId)
-	fmt.Println("Item ID data is ", itemId.Data())
+	fmt.Println("Item ID data is ", itemId.Data())*/
 
 	//deploys a contract
 
-	return nil
+	return address.Hex(), nil
 }
 
 func getBalance(username string) uint16 {
@@ -522,9 +562,119 @@ func getBalance(username string) uint16 {
 	return 50
 }
 
-func awardItem() {
+func awardItem(awardtoplayer string, tokenURI string, contractHex string) (string, error) {
+
 	// awards an item to a player
 	//takes playerID and item type and mayb contract instance
+
+	client, _ := getEthClient()
+
+	// get address of player getting item
+	privateKey, err := getUserKey(awardtoplayer)
+
+	if err != nil {
+		fmt.Println("Unable to get Private Key!!")
+		return "", err
+	}
+
+	publicKey := privateKey.Public()
+	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal("error casting public key to ECDSA")
+	}
+
+	playerAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
+
+	//get instance of deployed contract from address
+
+	contractAddress := common.HexToAddress(contractHex)
+
+	instance, err := NewGameitem(contractAddress, client)
+
+	if err != nil {
+		log.Fatal("could not get instance of NewGameitem")
+	}
+
+	fmt.Println("Contract is loaded!")
+
+	//award the item
+
+	nonce, err := client.PendingNonceAt(context.Background(), playerAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	chainID := big.NewInt(3543006677)
+	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
+
+	if err != nil {
+		log.Fatal("New Keyed Transactor did not get assigned", err)
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+	auth.Value = big.NewInt(0)       // in wei
+	auth.GasLimit = uint64(30000000) // in units
+	auth.GasPrice = big.NewInt(0)
+
+	tx, err := instance.AwardItem(auth, playerAddress, tokenURI)
+
+	if err != nil {
+		log.Fatal("Unable to Award Item", err)
+	}
+
+	//fmt.Println("Item ID is ", item.)
+	fmt.Println("Transaction Sent: ", tx.Hash().Hex())
+	fmt.Println("Item ID data is ", tx.Data())
+	fmt.Println("Player Address receiving item is ", playerAddress)
+
+	//sleep because I'm lame
+
+	fmt.Println("Waiting 10s to be able to mine transaction..")
+
+	time.Sleep(10 * time.Second)
+
+	//get latest blocknumber
+
+	header, err := client.HeaderByNumber(context.Background(), nil)
+	if err != nil {
+
+		log.Fatal("Headerbynumber call failed", err)
+	}
+
+	fmt.Println("Block Header is", header.Number.String())
+
+	/*blockNumber := big.NewInt(39)
+	block, err := client.BlockByNumber(context.Background(), header.Number)
+	if err != nil {
+		log.Fatal(err)
+	}*/
+
+	callopts := bind.CallOpts{false, playerAddress, header.Number, nil}
+	itemnum := big.NewInt(1)
+
+	owner, err2 := instance.OwnerOf(&callopts, itemnum)
+
+	if err2 != nil {
+		fmt.Printf("Unable to get owner of item %d.  Error is %s\n", itemnum, err2)
+	} else {
+
+		fmt.Printf("Owner of item %d is address %s", itemnum, owner)
+		itemURI, _ := instance.TokenURI(&callopts, itemnum)
+		fmt.Println("Item 1 details are ", itemURI)
+
+	}
+
+	return tx.Hash().Hex(), err
+
+}
+
+func getOwner(id string) (string, error) {
+	//input: takes in an item ID
+	//output: returns the owner of that item.
+
+	//Get owner of item 1
+	//item.UnmarshalJSON(item.Data())
+
+	return "", nil
 }
 
 func tradeItem() {

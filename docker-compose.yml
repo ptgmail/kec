@@ -1,0 +1,33 @@
+version: '2'
+services:
+
+  redis:
+    container_name: redis
+    image: redis:latest
+    command: docker-entrypoint.sh redis-server
+    networks:
+      kec_net:
+        ipv4_address: '172.19.0.2'
+    ports:
+      - 6379:6379
+  apptwo:
+    container_name: apptwo
+    image: secondapp:latest
+    command: ./main
+    networks:
+      kec_net:
+        ipv4_address: '172.19.0.3'
+    ports:
+      - 8081:3000
+    depends_on:
+      - redis
+    extra_hosts: 
+      - 'host.docker.internal:host-gateway'
+    
+networks:
+  kec_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 172.19.0.0/16
